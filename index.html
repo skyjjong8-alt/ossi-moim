@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>오씨모임 회비장부</title>
+<meta name="theme-color" content="#1f2d4a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="오씨모임">
+<style>
+  html, body { margin: 0; height: 100%; background: #1f2d4a; overflow: hidden;
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", -apple-system, sans-serif; }
+  /* 노치·홈 바 영역을 피해서 앱 화면을 놓는다 */
+  #shell { position: fixed;
+    top: env(safe-area-inset-top, 0px); bottom: env(safe-area-inset-bottom, 0px);
+    left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px); }
+  #app { width: 100%; height: 100%; border: 0; display: block; background: #f3f5fa; }
+
+  #splash { position: fixed; inset: 0; z-index: 10; background: #1f2d4a; color: #eaf0fa;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 24px; }
+  #splash img { width: 88px; height: 88px; border-radius: 22px; }
+  #splash p { margin: 0; font-size: 14px; color: #b7c4de; }
+  #splash button { font: inherit; font-weight: 700; background: #2563eb; color: #fff; border: 0; border-radius: 10px; padding: 12px 22px; cursor: pointer; }
+  .hide { display: none !important; }
+
+  #install { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%);
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    display: flex; align-items: center; gap: 10px; background: #fff; color: #1f2937;
+    border-radius: 999px; padding: 8px 8px 8px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.25); font-size: 14px; white-space: nowrap; }
+  #install button { font: inherit; font-weight: 700; border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+  #installYes { background: #2563eb; color: #fff; }
+  #installNo { background: transparent; color: #6b7280; padding: 8px 10px !important; }
+</style>
+</head>
+<body>
+  <div id="shell"><iframe id="app" name="ossiApp" title="오씨모임 회비장부" allow="clipboard-write"></iframe></div>
+
+  <div id="splash">
+    <img src="icon-192.png" alt="">
+    <strong style="font-size:20px">오씨모임 회비장부</strong>
+    <p id="splashMsg">불러오는 중…</p>
+    <button id="retry" class="hide" type="button">다시 시도</button>
+  </div>
+
+  <div id="install" class="hide">
+    <span>홈 화면에 앱으로 설치할까요?</span>
+    <button id="installYes" type="button">설치</button>
+    <button id="installNo" type="button" aria-label="닫기">✕</button>
+  </div>
+
+<script>
+  /* ▼▼▼ 여기에 Apps Script 웹앱 주소(배포 → 웹 앱 URL, /exec 로 끝남)를 넣으세요 ▼▼▼ */
+  const EXEC_URL = 'https://script.google.com/macros/s/AKfycbzllYkhIMCm8oVGJ-v-ElgnZgU9fj1fWF8-fno8yUwPw3Gja1TF-4yJlpIrpurt0Atq8Q/exec';
+  /* ▲▲▲ ------------------------------------------------------------------- ▲▲▲ */
+
+  const frame = document.getElementById('app');
+  const splash = document.getElementById('splash');
+  const splashMsg = document.getElementById('splashMsg');
+  const retry = document.getElementById('retry');
+
+  function showSplash(msg, canRetry) {
+    splashMsg.textContent = msg;
+    retry.classList.toggle('hide', !canRetry);
+    splash.classList.remove('hide');
+  }
+
+  function isAppsScriptUrl(u) {
+    try {
+      const url = new URL(u, EXEC_URL);
+      return url.protocol === 'https:' && url.hostname === 'script.google.com' && url.pathname.indexOf('/macros/') !== -1;
+    } catch (e) { return false; }
+  }
+
+  /** 앱 화면(iframe) 안에서 GET/POST 이동 */
+  function navigate(method, action, fields) {
+    if (!isAppsScriptUrl(action)) return;
+    const url = new URL(action, EXEC_URL);
+    const pairs = [];
+    url.searchParams.forEach((v, k) => { if (k !== 'app') pairs.push([k, v]); });
+    (fields || []).forEach(p => { if (p[0] !== 'app') pairs.push([String(p[0]), String(p[1])]); });
+    pairs.push(['app', '1']);
+    const base = url.origin + url.pathname;
+
+    if (method === 'POST') {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = base;
+      form.target = 'ossiApp';
+      form.acceptCharset = 'UTF-8';
+      pairs.forEach(([k, v]) => {
+        const inp = document.createElement('input');
+        inp.type = 'hidden'; inp.name = k; inp.value = v;
+        form.appendChild(inp);
+      });
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+    } else {
+      frame.src = base + '?' + new URLSearchParams(pairs).toString();
+    }
+  }
+
+  // 앱 화면에서 오는 "이동해 주세요" 요청만 받는다 (구글 Apps Script 화면에서 온 것만 신뢰)
+  window.addEventListener('message', (e) => {
+    let host = '';
+    try { host = new URL(e.origin).hostname; } catch (err) { return; }
+    if (!(host.endsWith('.googleusercontent.com') || host === 'script.google.com')) return;
+    const d = e.data;
+    if (!d || d.oc !== 'nav' || typeof d.action !== 'string') return;
+    navigate(d.method === 'POST' ? 'POST' : 'GET', d.action, Array.isArray(d.fields) ? d.fields : []);
+  });
+
+  frame.addEventListener('load', () => splash.classList.add('hide'));
+
+  function start() {
+    if (EXEC_URL.indexOf('여기에_배포ID') !== -1) {
+      showSplash('index.html 의 EXEC_URL 에 Apps Script 웹앱 주소를 먼저 넣어주세요.', false);
+      return;
+    }
+    if (!navigator.onLine) {
+      showSplash('인터넷에 연결되어 있지 않아요. 연결 후 다시 시도해 주세요.', true);
+      return;
+    }
+    showSplash('불러오는 중…', false);
+    frame.src = EXEC_URL + (EXEC_URL.indexOf('?') === -1 ? '?' : '&') + 'app=1';
+  }
+  retry.addEventListener('click', start);
+  window.addEventListener('online', () => { if (!splash.classList.contains('hide')) start(); });
+  start();
+
+  // 서비스 워커(앱 설치에 필요)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+
+  // 설치 안내 (안드로이드 크롬·PC 크롬/엣지에서만 뜸. 아이폰은 공유 → 홈 화면에 추가)
+  let deferred = null;
+  const installBar = document.getElementById('install');
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferred = e;
+    let dismissed = false;
+    try { dismissed = localStorage.getItem('ossi_install_dismissed') === '1'; } catch (err) {}
+    if (!dismissed) installBar.classList.remove('hide');
+  });
+  document.getElementById('installYes').addEventListener('click', async () => {
+    installBar.classList.add('hide');
+    if (!deferred) return;
+    deferred.prompt();
+    try { await deferred.userChoice; } catch (err) {}
+    deferred = null;
+  });
+  document.getElementById('installNo').addEventListener('click', () => {
+    installBar.classList.add('hide');
+    try { localStorage.setItem('ossi_install_dismissed', '1'); } catch (err) {}
+  });
+  window.addEventListener('appinstalled', () => installBar.classList.add('hide'));
+</script>
+</body>
+</html>
